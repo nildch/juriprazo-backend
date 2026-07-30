@@ -1,4 +1,5 @@
 from helpers.database import get_conn
+from helpers.security import hash_senha
 
 SQL = """
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS prazos (
 CREATE TABLE IF NOT EXISTS notificacoes (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     advogado_id UUID NOT NULL REFERENCES advogados(id) ON DELETE CASCADE,
-    prazo_id    UUID NOT NULL REFERENCES prazos(id)    ON DELETE CASCADE,
+    prazo_id    UUID NOT NULL REFERENCES prazos(id) ON DELETE CASCADE,
     mensagem    TEXT NOT NULL,
     lida        BOOLEAN DEFAULT FALSE,
     enviada_em  TIMESTAMP DEFAULT NOW()
@@ -69,9 +70,27 @@ CREATE TABLE IF NOT EXISTS notificacoes (
 
 CREATE TABLE IF NOT EXISTS movimentacoes (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    prazo_id    UUID NOT NULL REFERENCES prazos(id)    ON DELETE CASCADE,
+    prazo_id    UUID NOT NULL REFERENCES prazos(id) ON DELETE CASCADE,
     advogado_id UUID NOT NULL REFERENCES advogados(id) ON DELETE CASCADE,
     descricao   TEXT NOT NULL,
+    criado_em   TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS solicitacoes_acesso (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    oab          VARCHAR(20)  NOT NULL,
+    numero       VARCHAR(50)   NOT NULL,
+    email        VARCHAR(150)  NOT NULL,
+    status       VARCHAR(20)   NOT NULL DEFAULT 'pendente',
+    decidido_em  TIMESTAMP,
+    criado_em    TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS administradores (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome        VARCHAR(150) NOT NULL,
+    email       VARCHAR(150) NOT NULL UNIQUE,
+    senha_hash  VARCHAR(255) NOT NULL,
     criado_em   TIMESTAMP DEFAULT NOW()
 );
 
@@ -80,12 +99,12 @@ INSERT INTO feriados (data, descricao, tipo) VALUES
     ('2025-01-01', 'Confraternização Universal', 'nacional'),
     ('2025-04-18', 'Sexta-feira Santa',           'nacional'),
     ('2025-04-21', 'Tiradentes',                  'nacional'),
-    ('2025-05-01', 'Dia do Trabalhador',           'nacional'),
-    ('2025-09-07', 'Independência do Brasil',      'nacional'),
-    ('2025-10-12', 'Nossa Senhora Aparecida',      'nacional'),
-    ('2025-11-02', 'Finados',                      'nacional'),
-    ('2025-11-15', 'Proclamação da República',     'nacional'),
-    ('2025-12-25', 'Natal',                        'nacional')
+    ('2025-05-01', 'Dia do Trabalhador',          'nacional'),
+    ('2025-09-07', 'Independência do Brasil',     'nacional'),
+    ('2025-10-12', 'Nossa Senhora Aparecida',     'nacional'),
+    ('2025-11-02', 'Finados',                    'nacional'),
+    ('2025-11-15', 'Proclamação da República',   'nacional'),
+    ('2025-12-25', 'Natal',                      'nacional')
 ON CONFLICT DO NOTHING;
 """
 
@@ -94,6 +113,16 @@ try:
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute(SQL)
+
+    cursor.execute(
+        """
+        INSERT INTO administradores (nome, email, senha_hash)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (email) DO NOTHING
+        """,
+        ("Administrador", "admin94@gmail.com", hash_senha("258258"))
+    )
+
     conn.commit()
     print("✓ Banco inicializado com sucesso!")
 except Exception as e:

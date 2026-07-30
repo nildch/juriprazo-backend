@@ -5,3 +5,4 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-dotenv
 python-multipart
+redis==5.0.4

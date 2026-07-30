@@ -4,12 +4,10 @@ from datetime import date, datetime, timedelta
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
-
 from helpers.application import app
 from helpers.database import get_conn
 from helpers.security import hash_senha, verificar_senha, criar_token
 from helpers.auth import get_advogado_atual
-
 from models.Advogado import Advogado
 from models.Cliente import Cliente
 from models.Processo import Processo
@@ -17,7 +15,15 @@ from models.Prazo import Prazo
 from models.Notificacao import Notificacao
 from models.Feriado import Feriado
 from models.Movimentacao import Movimentacao
-
+from helpers.cache import redis_client
+import json
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional
+from helpers.security import hash_senha, verificar_senha, criar_token, decodificar_token
+import secrets
+import string
+import unicodedata
 
 class AdvogadoInput(BaseModel):
     nome: str
@@ -26,7 +32,7 @@ class AdvogadoInput(BaseModel):
     oab: str
 
 class LoginInput(BaseModel):
-    email: str
+    login: str
     senha: str
 
 class RecuperarSenhaInput(BaseModel):
@@ -68,6 +74,23 @@ class FeriadoInput(BaseModel):
 class MovimentacaoInput(BaseModel):
     descricao: str
 
+class SolicitacaoAcessoInput(BaseModel):
+    oab: str
+    numero: str
+    email: str
+
+class LoginInput(BaseModel):
+    login: str
+    senha: str
+
+class SolicitacaoAcessoInput(BaseModel):
+    oab: str
+    numero: str
+    email: str
+
+class AprovarSolicitacaoInput(BaseModel):
+    nome: str
+    senha: Optional[str] = None
 
 def calcular_data_prazo(data_inicio: date, dias_uteis: int) -> date:
     conn = None
@@ -95,6 +118,11 @@ def calcular_data_prazo(data_inicio: date, dias_uteis: int) -> date:
         dias_contados += 1
     return data_atual
 
+def remover_acentos(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(c) != "Mn"
+    )
 
 @app.get("/")
 def index():
@@ -134,19 +162,47 @@ def cadastrarAdvogado(dados: AdvogadoInput):
             conn.close()
 
 @app.post("/auth/login")
-def loginAdvogado(dados: LoginInput):
+def login(dados: LoginInput):
     conn = None
     try:
         conn = get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, senha_hash FROM advogados WHERE email = %s", (dados.email,))
+
+        login = dados.login.strip()
+        login_email = login.lower()
+        login_oab = login.upper()
+
+        # 1) tenta admin
+        cursor.execute(
+            "SELECT id, senha_hash FROM administradores WHERE email = %s",
+            (login_email,)
+        )
+        admin_row = cursor.fetchone()
+
+        if admin_row and verificar_senha(dados.senha, admin_row[1]):
+            token = criar_token(str(admin_row[0]), role="admin")
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "role": "admin"
+            }
+
+        # 2) tenta advogado
+        cursor.execute(
+            "SELECT id, senha_hash FROM advogados WHERE email = %s OR oab = %s",
+            (login_email, login_oab)
+        )
         row = cursor.fetchone()
 
         if not row or not verificar_senha(dados.senha, row[1]):
             raise HTTPException(status_code=401, detail="Credenciais inválidas.")
 
-        token = criar_token(str(row[0]))
-        return {"access_token": token, "token_type": "bearer"}
+        token = criar_token(str(row[0]), role="advogado")
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "role": "advogado"
+        }
 
     except psycopg2.Error as e:
         print(e)
@@ -214,6 +270,12 @@ def redefinirSenha(dados: RedefinirSenhaInput):
 
 @app.get("/clientes")
 def getClientes(advogado=Depends(get_advogado_atual)):
+    cache_key = f"clientes:{advogado['id']}"
+
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached), 200
+
     clientes = []
     conn = None
     try:
@@ -226,6 +288,8 @@ def getClientes(advogado=Depends(get_advogado_atual)):
         rows = cursor.fetchall()
         for row in rows:
             clientes.append(Cliente(row[0], row[1], row[2], row[3], row[4], row[5], row[6]).toDict())
+
+        redis_client.setex(cache_key, 60, json.dumps(clientes, default=str))
     except psycopg2.Error as e:
         print(e)
     finally:
@@ -266,6 +330,7 @@ def postCliente(dados: ClienteInput, advogado=Depends(get_advogado_atual)):
         )
         row = cursor.fetchone()
         conn.commit()
+        redis_client.delete(f"clientes:{advogado['id']}")
         return Cliente(row[0], row[1], row[2], row[3], row[4], row[5], row[6]).toDict()
     except psycopg2.Error as e:
         print(e)
@@ -288,6 +353,7 @@ def putCliente(cliente_id: str, dados: ClienteInput, advogado=Depends(get_advoga
         if not row:
             raise HTTPException(status_code=404, detail="Cliente não encontrado.")
         conn.commit()
+        redis_client.delete(f"clientes:{advogado['id']}")
         return Cliente(row[0], row[1], row[2], row[3], row[4], row[5], row[6]).toDict()
     except psycopg2.Error as e:
         print(e)
@@ -304,6 +370,7 @@ def deleteCliente(cliente_id: str, advogado=Depends(get_advogado_atual)):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM clientes WHERE id = %s AND advogado_id = %s", (cliente_id, advogado["id"]))
         conn.commit()
+        redis_client.delete(f"clientes:{advogado['id']}")
     except psycopg2.Error as e:
         print(e)
         raise HTTPException(status_code=500, detail="Erro ao excluir cliente.")
@@ -314,6 +381,12 @@ def deleteCliente(cliente_id: str, advogado=Depends(get_advogado_atual)):
 
 @app.get("/processos")
 def getProcessos(tribunal: Optional[str] = None, advogado=Depends(get_advogado_atual)):
+    cache_key = f"processos:{advogado['id']}:{tribunal or 'todos'}"
+    
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached), 200
+
     processos = []
     conn = None
     try:
@@ -329,6 +402,8 @@ def getProcessos(tribunal: Optional[str] = None, advogado=Depends(get_advogado_a
         rows = cursor.fetchall()
         for row in rows:
             processos.append(Processo(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]).toDict())
+        
+        redis_client.setex(cache_key, 60, json.dumps(processos, default=str))
     except psycopg2.Error as e:
         print(e)
     finally:
@@ -370,6 +445,7 @@ def postProcesso(dados: ProcessoInput, advogado=Depends(get_advogado_atual)):
         )
         row = cursor.fetchone()
         conn.commit()
+        redis_client.delete(f"processos:{advogado['id']}:todos")
         return Processo(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]).toDict()
     except psycopg2.Error as e:
         print(e)
@@ -392,6 +468,7 @@ def putProcesso(processo_id: str, dados: ProcessoInput, advogado=Depends(get_adv
         if not row:
             raise HTTPException(status_code=404, detail="Processo não encontrado.")
         conn.commit()
+        redis_client.delete(f"processos:{advogado['id']}:todos")
         return Processo(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]).toDict()
     except psycopg2.Error as e:
         print(e)
@@ -415,6 +492,7 @@ def deleteProcesso(processo_id: str, advogado=Depends(get_advogado_atual)):
             raise HTTPException(status_code=409, detail="Não é possível excluir um processo com prazos pendentes.")
         cursor.execute("DELETE FROM processos WHERE id = %s AND advogado_id = %s", (processo_id, advogado["id"]))
         conn.commit()
+        redis_client.delete(f"processos:{advogado['id']}:todos")
     except psycopg2.Error as e:
         print(e)
         raise HTTPException(status_code=500, detail="Erro ao excluir processo.")
@@ -517,17 +595,42 @@ def postPrazo(dados: PrazoInput, advogado=Depends(get_advogado_atual)):
 def patchPrazoStatus(prazo_id: str, dados: PrazoStatusInput, advogado=Depends(get_advogado_atual)):
     conn = None
     try:
+        status_normalizado = remover_acentos(dados.status.strip().lower())
+
+        if status_normalizado in {"concluido", "finalizado", "done"}:
+            status_db = "concluido"
+        elif status_normalizado in {"pendente", "aberto"}:
+            status_db = "pendente"
+        else:
+            raise HTTPException(status_code=400, detail="Status inválido.")
+
         conn = get_conn()
         cursor = conn.cursor()
+
         cursor.execute(
-            "UPDATE prazos SET status = %s FROM processos WHERE prazos.processo_id = processos.id AND prazos.id = %s AND processos.advogado_id = %s RETURNING prazos.id, prazos.processo_id, prazos.descricao, prazos.data_prazo, prazos.prioridade, prazos.status, prazos.lembrete_em, prazos.arquivo_url, prazos.criado_em",
-            (dados.status, prazo_id, advogado["id"])
+            """
+            UPDATE prazos
+            SET status = %s
+            WHERE id = %s
+              AND processo_id IN (
+                  SELECT id
+                  FROM processos
+                  WHERE advogado_id = %s
+              )
+            RETURNING id, processo_id, descricao, data_prazo, prioridade, status, lembrete_em, arquivo_url, criado_em
+            """,
+            (status_db, prazo_id, advogado["id"])
         )
+
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Prazo não encontrado.")
+
         conn.commit()
         return Prazo(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]).toDict()
+
+    except HTTPException:
+        raise
     except psycopg2.Error as e:
         print(e)
         raise HTTPException(status_code=500, detail="Erro ao atualizar status.")
@@ -556,6 +659,12 @@ def deletePrazo(prazo_id: str, advogado=Depends(get_advogado_atual)):
 
 @app.get("/feriados")
 def getFeriados():
+    cache_key = "feriados:todos"
+    
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached), 200
+
     feriados = []
     conn = None
     try:
@@ -565,6 +674,8 @@ def getFeriados():
         rows = cursor.fetchall()
         for row in rows:
             feriados.append(Feriado(row[0], row[1], row[2], row[3], row[4], row[5]).toDict())
+        
+        redis_client.setex(cache_key, 300, json.dumps(feriados, default=str))
     except psycopg2.Error as e:
         print(e)
     finally:
@@ -584,6 +695,7 @@ def postFeriado(dados: FeriadoInput, advogado=Depends(get_advogado_atual)):
         )
         row = cursor.fetchone()
         conn.commit()
+        redis_client.delete("feriados:todos")
         return Feriado(row[0], row[1], row[2], row[3], row[4], row[5]).toDict()
     except psycopg2.Error as e:
         print(e)
@@ -600,6 +712,7 @@ def deleteFeriado(feriado_id: str, advogado=Depends(get_advogado_atual)):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM feriados WHERE id = %s", (feriado_id,))
         conn.commit()
+        redis_client.delete("feriados:todos")
     except psycopg2.Error as e:
         print(e)
     finally:
@@ -713,6 +826,255 @@ def postMovimentacao(prazo_id: str, dados: MovimentacaoInput, advogado=Depends(g
     except psycopg2.Error as e:
         print(e)
         raise HTTPException(status_code=500, detail="Erro ao registrar movimentação.")
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/auth/solicitar-acesso", status_code=201)
+def solicitarAcesso(dados: SolicitacaoAcessoInput):
+    conn = None
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+
+        oab = dados.oab.strip().upper()
+        numero = dados.numero.strip()
+        email = dados.email.strip().lower()
+
+        
+        cursor.execute(
+            "SELECT id FROM advogados WHERE email = %s OR oab = %s",
+            (email, oab)
+        )
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=400,
+                detail="Esse advogado já possui acesso cadastrado."
+            )
+
+        
+        cursor.execute(
+            """
+            SELECT id
+            FROM solicitacoes_acesso
+            WHERE email = %s AND status = 'pendente'
+            """,
+            (email,)
+        )
+        if cursor.fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail="Já existe uma solicitação pendente para este e-mail."
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO solicitacoes_acesso (oab, numero, email, status)
+            VALUES (%s, %s, %s, 'pendente')
+            RETURNING id, oab, numero, email, status, criado_em
+            """,
+            (oab, numero, email)
+        )
+
+        row = cursor.fetchone()
+        conn.commit()
+
+        return {
+            "id": str(row[0]),
+            "oab": row[1],
+            "numero": row[2],
+            "email": row[3],
+            "status": row[4],
+            "criado_em": str(row[5]),
+            "mensagem": "Solicitação enviada com sucesso."
+        }
+
+    except psycopg2.Error as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Erro ao enviar solicitação.")
+    finally:
+        if conn:
+            conn.close()
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+def get_admin_atual(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Token não enviado.")
+
+    payload = decodificar_token(credentials.credentials)
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Acesso restrito ao admin.")
+
+    return payload
+
+@app.get("/admin/solicitacoes-acesso")
+def listar_solicitacoes_acesso(admin=Depends(get_admin_atual)):
+    conn = None
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, oab, numero, email, status, criado_em
+            FROM solicitacoes_acesso
+            WHERE status = 'pendente'
+            ORDER BY criado_em DESC
+        """)
+
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": str(row[0]),
+                "oab": row[1],
+                "numero": row[2],
+                "email": row[3],
+                "status": row[4],
+                "criado_em": str(row[5]),
+            }
+            for row in rows
+        ]
+
+    except psycopg2.Error as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Erro ao listar solicitações.")
+    finally:
+        if conn:
+            conn.close()
+
+def gerar_senha_forte(tamanho: int = 12) -> str:
+    letras = string.ascii_letters
+    numeros = string.digits
+    simbolos = "!@#$%&*?"
+    base = letras + numeros + simbolos
+
+    senha = [
+        secrets.choice(letras.upper()),
+        secrets.choice(letras.lower()),
+        secrets.choice(numeros),
+        secrets.choice(simbolos),
+    ]
+
+    senha += [secrets.choice(base) for _ in range(tamanho - 4)]
+    secrets.SystemRandom().shuffle(senha)
+    return "".join(senha)
+
+@app.post("/admin/solicitacoes-acesso/{solicitacao_id}/aprovar")
+def aprovar_solicitacao_acesso(
+    solicitacao_id: str,
+    dados: AprovarSolicitacaoInput,
+    admin=Depends(get_admin_atual)
+):
+    conn = None
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT id, oab, numero, email, status
+            FROM solicitacoes_acesso
+            WHERE id = %s
+            """,
+            (solicitacao_id,)
+        )
+        solicitacao = cursor.fetchone()
+
+        if not solicitacao:
+            raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
+
+        if solicitacao[4] != "pendente":
+            raise HTTPException(status_code=400, detail="Solicitação já foi processada.")
+
+        oab = solicitacao[1].strip().upper()
+        email = solicitacao[3].strip().lower()
+        nome = dados.nome.strip()
+        senha_plana = dados.senha.strip() if dados.senha else gerar_senha_forte()
+        senha_hash = hash_senha(senha_plana)
+
+        cursor.execute(
+            "SELECT id FROM advogados WHERE email = %s OR oab = %s",
+            (email, oab)
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="Advogado já cadastrado.")
+
+        cursor.execute(
+            """
+            INSERT INTO advogados (nome, email, senha_hash, oab)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, nome, email, oab, criado_em
+            """,
+            (nome, email, senha_hash, oab)
+        )
+        advogado = cursor.fetchone()
+
+        cursor.execute(
+            """
+            UPDATE solicitacoes_acesso
+            SET status = 'aprovada', decidido_em = NOW()
+            WHERE id = %s
+            """,
+            (solicitacao_id,)
+        )
+
+        conn.commit()
+
+        return {
+            "mensagem": "Solicitação aprovada e advogado cadastrado com sucesso.",
+            "advogado": {
+                "id": str(advogado[0]),
+                "nome": advogado[1],
+                "email": advogado[2],
+                "oab": advogado[3],
+                "criado_em": str(advogado[4]),
+            },
+            "senha_provisoria": senha_plana
+        }
+
+    except psycopg2.Error as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Erro ao aprovar solicitação.")
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/admin/solicitacoes-acesso/{solicitacao_id}/rejeitar")
+def rejeitar_solicitacao_acesso(solicitacao_id: str, admin=Depends(get_admin_atual)):
+    conn = None
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id, status FROM solicitacoes_acesso WHERE id = %s",
+            (solicitacao_id,)
+        )
+        solicitacao = cursor.fetchone()
+
+        if not solicitacao:
+            raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
+
+        if solicitacao[1] != "pendente":
+            raise HTTPException(status_code=400, detail="Solicitação já foi processada.")
+
+        cursor.execute(
+            """
+            UPDATE solicitacoes_acesso
+            SET status = 'rejeitada', decidido_em = NOW()
+            WHERE id = %s
+            """,
+            (solicitacao_id,)
+        )
+
+        conn.commit()
+        return {"mensagem": "Solicitação rejeitada com sucesso."}
+
+    except psycopg2.Error as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Erro ao rejeitar solicitação.")
     finally:
         if conn:
             conn.close()
