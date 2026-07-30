@@ -1,0 +1,340 @@
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  background: #f4f7fb;
+  color: #17345d;
+}
+
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 54px 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+  background: linear-gradient(180deg, #18385f 0%, #0f2746 100%);
+  color: #fff;
+  border-top-right-radius: 36px;
+  border-bottom-right-radius: 36px;
+  box-shadow: 18px 0 30px rgba(15, 23, 42, 0.08);
+}
+
+.login-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://img.magnific.com/fotos-gratis/visao-de-escalas-de-justica-3d_23-2151228164.jpg?semt=ais_hybrid&w=740&q=80")
+    center center / cover no-repeat;
+  opacity: 0.18;
+  z-index: 0;
+}
+
+.login-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 700;
+}
+
+.login-hero h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 4vw, 4.5rem);
+  line-height: 1.04;
+  max-width: 12ch;
+}
+
+.login-hero p {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  max-width: 560px;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.hero-features {
+  display: grid;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.hero-feature {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  color: #1f3154;
+  border-radius: 32px;
+  padding: 38px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+  border: 1px solid rgba(31, 49, 84, 0.08);
+}
+
+.login-card h2 {
+  margin: 0;
+  font-size: 2rem;
+  text-align: center;
+}
+
+.login-subtitle {
+  margin: 10px 0 26px;
+  color: #6b778d;
+  text-align: center;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1f3154;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid rgba(31, 49, 84, 0.16);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fbfcfe;
+  color: #1f3154;
+}
+
+.field input::placeholder {
+  color: #8a96aa;
+}
+
+.field input:focus {
+  border-color: #4e77b9;
+  box-shadow: 0 0 0 4px rgba(78, 119, 185, 0.12);
+}
+
+.password-box {
+  position: relative;
+}
+
+.password-box input {
+  padding-right: 92px;
+}
+
+.toggle-password {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #4e77b9;
+  font-weight: 700;
+}
+
+.options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #334d72;
+}
+
+.remember input {
+  accent-color: #4e77b9;
+}
+
+.forgot-link {
+  color: #4e77b9;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+.error-box {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff1f3;
+  color: #b42318;
+  border: 1px solid #f6c6cd;
+}
+
+.success-box {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #eff8f1;
+  color: #1f7a3a;
+  border: 1px solid #bde5c4;
+}
+
+.login-button {
+  border: none;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #4e77b9 0%, #3f67a4 100%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(63, 103, 164, 0.18);
+}
+
+.login-button:hover {
+  filter: brightness(1.03);
+}
+
+.login-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.first-access-link {
+  border: none;
+  background: transparent;
+  color: #4e77b9;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0 0;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  color: #1f3154;
+  border-radius: 28px;
+  border: 1px solid rgba(31, 49, 84, 0.1);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  padding: 24px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  color: #1f3154;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.modal-form input {
+  width: 100%;
+  border: 1px solid rgba(31, 49, 84, 0.16);
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: #fbfcfe;
+  color: #1f3154;
+}
+
+.modal-form input:focus {
+  border-color: #4e77b9;
+  box-shadow: 0 0 0 4px rgba(78, 119, 185, 0.12);
+}
+
+@media (max-width: 960px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero {
+    border-radius: 0 0 28px 28px;
+    padding: 40px 24px 28px;
+  }
+
+  .login-panel {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-card {
+    padding: 24px;
+    border-radius: 24px;
+  }
+
+  .options-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

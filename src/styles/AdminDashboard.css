@@ -1,0 +1,40 @@
+.dashboard-page.admin-page {
+  background: #edf2fa;
+  color: #1f3154;
+}
+
+.dashboard-page.admin-page .dashboard-topbar h1,
+.dashboard-page.admin-page .dashboard-topbar p,
+.dashboard-page.admin-page .summary-card strong,
+.dashboard-page.admin-page .summary-card span,
+.dashboard-page.admin-page .panel-header h2,
+.dashboard-page.admin-page .panel-header span,
+.dashboard-page.admin-page .admin-request-info strong,
+.dashboard-page.admin-page .admin-request-info p {
+  color: #1f3154;
+}
+
+.dashboard-page.admin-page .summary-card,
+.dashboard-page.admin-page .dashboard-panel,
+.dashboard-page.admin-page .admin-request-card {
+  background: #fff !important;
+  border: 1px solid rgba(31, 49, 84, 0.08);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-page.admin-page .dashboard-actions button,
+.dashboard-page.admin-page .gold-button {
+  background: linear-gradient(135deg, #4e77b9 0%, #3f67a4 100%) !important;
+  color: #fff !important;
+}
+
+.dashboard-page.admin-page .dark-button,
+.dashboard-page.admin-page .dashboard-actions button:last-child {
+  background: linear-gradient(135deg, #274a7d 0%, #1f3154 100%) !important;
+  color: #fff !important;
+}
+
+.dashboard-page.admin-page .dashboard-error {
+  background: #fff1f3;
+  color: #b42318;
+}
