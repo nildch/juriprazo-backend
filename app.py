@@ -1078,3 +1078,34 @@ def rejeitar_solicitacao_acesso(solicitacao_id: str, admin=Depends(get_admin_atu
     finally:
         if conn:
             conn.close()
+
+@app.get("/tipos-vara")
+def listar_tipos_vara():
+    conn = None
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, nome, slug, ramo, descricao
+            FROM tipos_vara
+            WHERE ativo = TRUE
+            ORDER BY ramo, nome
+        """)
+        rows = cursor.fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "nome": row[1],
+                "slug": row[2],
+                "ramo": row[3],
+                "descricao": row[4],
+            }
+            for row in rows
+        ]
+    except psycopg2.Error as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Erro ao listar tipos de vara.")
+    finally:
+        if conn:
+            conn.close()
